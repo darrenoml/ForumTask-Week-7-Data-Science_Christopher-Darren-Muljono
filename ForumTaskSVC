@@ -1,0 +1,81 @@
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.metrics import confusion_matrix, classification_report
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def preprocess_data(df, label_encoders=None, scaler=None, is_train=True):
+    df_encoded = df.copy()
+    if is_train:
+        label_encoders = {}
+    for column in df_encoded.select_dtypes(include=['object']).columns:
+        if is_train:
+            le = LabelEncoder()
+            df_encoded[column] = le.fit_transform(df_encoded[column])
+            label_encoders[column] = le
+        else:
+            df_encoded[column] = label_encoders[column].transform(df_encoded[column])
+
+    if is_train:
+        scaler = StandardScaler()
+        df_encoded[df_encoded.columns] = scaler.fit_transform(df_encoded)
+    else:
+        df_encoded[df_encoded.columns] = scaler.transform(df_encoded)
+    
+    return df_encoded, label_encoders, scaler
+
+train_df = pd.read_csv('C:/Users/MyPC/Documents/bank-full.csv', delimiter=';')
+test_df = pd.read_csv('C:/Users/MyPC/Documents/bank.csv', delimiter=';')
+
+train_df_encoded, train_label_encoders, train_scaler = preprocess_data(train_df)
+test_df_encoded, _, _ = preprocess_data(test_df, train_label_encoders, train_scaler, is_train=False)
+
+le_y = LabelEncoder()
+y_train = le_y.fit_transform(train_df['y'])
+X_train = train_df_encoded.drop(columns=['y']).values  
+y_test = le_y.transform(test_df['y'])
+X_test = test_df_encoded.drop(columns=['y']).values  
+
+# Models to be used
+models = {
+    'Logistic Regression': LogisticRegression(random_state=42),
+    'K-Nearest Neighbors': KNeighborsClassifier(),
+    'Support Vector Machine': SVC(random_state=42),
+    'Decision Tree': DecisionTreeClassifier(random_state=42),
+    'Random Forest': RandomForestClassifier(random_state=42),
+    'Naive Bayes': GaussianNB()
+}
+
+results = {}
+for model_name, model in models.items():
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    cm = confusion_matrix(y_test, y_pred)
+    results[model_name] = {
+        'confusion_matrix': cm, 
+        'classification_report': classification_report(y_test, y_pred, target_names=le_y.classes_, output_dict=True)
+    }
+
+fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+fig.suptitle('Confusion Matrices for Different Models', fontsize=18)
+
+for ax, (model_name, result) in zip(axes.flatten(), results.items()):
+    sns.heatmap(result['confusion_matrix'], annot=True, fmt='d', cmap='Blues', ax=ax, 
+                xticklabels=le_y.classes_, yticklabels=le_y.classes_)
+    ax.set_title(model_name)
+    ax.set_xlabel('Predicted')
+    ax.set_ylabel('Actual')
+
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+plt.show()
+
+for model_name, result in results.items():
+    print(f"\n{model_name} Classification Report:\n")
+    print(pd.DataFrame(result['classification_report']))
